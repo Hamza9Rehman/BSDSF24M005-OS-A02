@@ -1,5 +1,5 @@
 /*
-- Programming Assignment 02: ls-v1.4.0 (Alphabetical Sort)
+- Programming Assignment 02: ls-v1.5.0 (Colorized Output)
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,6 +12,14 @@
 #include <grp.h>
 #include <time.h>
 
+// ANSI Color Codes
+#define COLOR_RESET   "\033[0m"
+#define COLOR_BLUE    "\033[0;34m"
+#define COLOR_GREEN   "\033[0;32m"
+#define COLOR_RED     "\033[0;31m"
+#define COLOR_PINK    "\033[0;35m"
+#define COLOR_REVERSE "\033[7m"
+
 // Display modes
 #define MODE_VERTICAL   0  // Default "down then across"
 #define MODE_LONG       1  // -l option
@@ -21,8 +29,10 @@ int display_mode = MODE_VERTICAL;
 
 void do_ls(const char *dir);
 void print_file_info(const char *dir, const char *filename);
-void print_columnar_vertical(char **filenames, int count, int max_len);
-void print_columnar_horizontal(char **filenames, int count, int max_len);
+void print_columnar_vertical(const char *dir, char **filenames, int count, int max_len);
+void print_columnar_horizontal(const char *dir, char **filenames, int count, int max_len);
+void print_colored_filename(const char *dir, const char *filename, int padding);
+int is_archive(const char *filename);
 int compare_strings(const void *a, const void *b);
 int get_term_width(void);
 
@@ -68,6 +78,71 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+// Check if filename has archive extension (.tar, .gz, .zip)
+int is_archive(const char *filename)
+{
+    const char *exts[] = {".tar", ".gz", ".zip", ".tgz", ".bz2", ".xz", NULL};
+    for (int i = 0; exts[i] != NULL; i++)
+    {
+        size_t len = strlen(filename);
+        size_t ext_len = strlen(exts[i]);
+        if (len >= ext_len && strcmp(filename + len - ext_len, exts[i]) == 0)
+        {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Print filename with ANSI color based on st_mode and file extension
+void print_colored_filename(const char *dir, const char *filename, int padding)
+{
+    char path[1024];
+    snprintf(path, sizeof(path), "%s/%s", dir, filename);
+
+    struct stat info;
+    if (lstat(path, &info) == -1)
+    {
+        // Fallback to uncolored printing if lstat fails
+        printf("%-*s", padding, filename);
+        return;
+    }
+
+    const char *color = COLOR_RESET;
+
+    // Coloring Rules Logic
+    if (S_ISLNK(info.st_mode))
+    {
+        color = COLOR_PINK; // Symbolic Link: Pink
+    }
+    else if (S_ISDIR(info.st_mode))
+    {
+        color = COLOR_BLUE; // Directory: Blue
+    }
+    else if (S_ISCHR(info.st_mode) || S_ISBLK(info.st_mode) || S_ISFIFO(info.st_mode) || S_ISSOCK(info.st_mode))
+    {
+        color = COLOR_REVERSE; // Special Files: Reverse Video
+    }
+    else if (is_archive(filename))
+    {
+        color = COLOR_RED; // Tarballs & Archives: Red
+    }
+    else if (info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH))
+    {
+        color = COLOR_GREEN; // Executable: Green
+    }
+
+    // Print colored string
+    printf("%s%s%s", color, filename, COLOR_RESET);
+
+    // Add trailing spaces manually because ANSI codes break printf %-*s width calculations
+    int len = strlen(filename);
+    for (int i = len; i < padding; i++)
+    {
+        putchar(' ');
+    }
+}
+
 // Comparison function for qsort to sort string array alphabetically
 int compare_strings(const void *a, const void *b)
 {
@@ -109,17 +184,14 @@ void do_ls(const char *dir)
         if (entry->d_name[0] == '.')
             continue;
 
-        // Expand dynamic array capacity if full
         if (count >= capacity)
         {
             capacity *= 2;
             filenames = realloc(filenames, capacity * sizeof(char *));
         }
 
-        // Store copy of filename
         filenames[count] = strdup(entry->d_name);
 
-        // Track longest filename length
         int len = strlen(entry->d_name);
         if (len > max_len)
         {
@@ -146,14 +218,14 @@ void do_ls(const char *dir)
         }
         else if (display_mode == MODE_HORIZONTAL)
         {
-            print_columnar_horizontal(filenames, count, max_len);
+            print_columnar_horizontal(dir, filenames, count, max_len);
         }
         else
         {
-            print_columnar_vertical(filenames, count, max_len);
+            print_columnar_vertical(dir, filenames, count, max_len);
         }
 
-        // 3. Free allocated dynamic memory
+        // 3. Free allocated memory
         for (int i = 0; i < count; i++)
         {
             free(filenames[i]);
@@ -163,7 +235,7 @@ void do_ls(const char *dir)
 }
 
 // Horizontal ("across") column printing logic (-x)
-void print_columnar_horizontal(char **filenames, int count, int max_len)
+void print_columnar_horizontal(const char *dir, char **filenames, int count, int max_len)
 {
     int term_width = get_term_width();
     int col_width = max_len + 2;
@@ -177,14 +249,14 @@ void print_columnar_horizontal(char **filenames, int count, int max_len)
             current_pos = 0;
         }
 
-        printf("%-*s", col_width, filenames[i]);
+        print_colored_filename(dir, filenames[i], col_width);
         current_pos += col_width;
     }
     printf("\n");
 }
 
 // Vertical ("down then across") column printing logic (Default)
-void print_columnar_vertical(char **filenames, int count, int max_len)
+void print_columnar_vertical(const char *dir, char **filenames, int count, int max_len)
 {
     int term_width = get_term_width();
     int col_width = max_len + 2;
@@ -202,14 +274,8 @@ void print_columnar_vertical(char **filenames, int count, int max_len)
 
             if (idx < count)
             {
-                if (c == cols - 1 || idx + rows >= count)
-                {
-                    printf("%s", filenames[idx]);
-                }
-                else
-                {
-                    printf("%-*s", col_width, filenames[idx]);
-                }
+                int pad = (c == cols - 1 || idx + rows >= count) ? 0 : col_width;
+                print_colored_filename(dir, filenames[idx], pad);
             }
         }
         printf("\n");
@@ -264,12 +330,15 @@ void print_file_info(const char *dir, const char *filename)
     char *time_str = ctime(&info.st_mtime);
     time_str[strlen(time_str) - 1] = '\0';
 
-    printf("%s %2ld %-8s %-8s %8ld %.12s %s\n",
+    printf("%s %2ld %-8s %-8s %8ld %.12s ",
            mode_str,
            (long)info.st_nlink,
            user,
            group,
            (long)info.st_size,
-           time_str + 4,
-           filename);
+           time_str + 4);
+
+    // Print filename with colors for long listing as well
+    print_colored_filename(dir, filename, 0);
+    printf("\n");
 }

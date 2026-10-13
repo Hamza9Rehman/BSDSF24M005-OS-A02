@@ -92,3 +92,42 @@ Returns 0 if both strings are identical.
 Returns a positive integer if the first string comes after the second alphabetically.   
 Why It Must Take const void *:
 void * is C's generic pointer type, allowing qsort() to accept array elements of any data type. The const keyword promises that the comparison function will not modify the data elements while comparing them. 
+
+
+Feature 6
+
+
+How do ANSI escape codes work to produce color in a standard Linux terminal? Show the 
+specific code sequence for printing text in green.
+
+How ANSI Escape Codes Work:
+ANSI escape codes are special non-printable character sequences sent directly to the terminal's standard output stream. When the terminal emulator encounters the escape sequence starting with \033[ (or \e[), it intercepts it as an instruction to change display styling (such as text color, background, or text weight) rather than printing the characters to screen. All subsequent text remains styled until a reset code (\033[0m) is sent to return the terminal to default settings.
+
+Specific Sequence for Green Text:
+Start Green: \033[0;32m (or \033[32m)
+Reset Color: \033[0m
+
+Example in C:
+printf("\033[0;32m%s\033[0m\n", filename);
+
+
+To color an executable file, you need to check its permission bits. Explain which bits in the 
+st_mode field you need to check to determine if a file is executable by the owner, group, or 
+others.
+
+To determine if a file is executable, you must inspect the permission bits within the st_mode field of struct stat using bitwise AND (&) operations against the POSIX execution permission macros:
+
+Owner Execute Permission: Check S_IXUSR bit (0100 octal).
+int is_owner_exec = (info.st_mode & S_IXUSR);
+
+Group Execute Permission: Check S_IXGRP bit (0010 octal).
+int is_group_exec = (info.st_mode & S_IXGRP);
+
+Others Execute Permission: Check S_IXOTH bit (0001 octal).
+int is_others_exec = (info.st_mode & S_IXOTH);
+
+Combined Check in ls:
+To check if any user class (owner, group, or others) has execute permission on the file, combine the macros using bitwise OR (|):
+if (info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) {
+    // File is executable by at least one entity (Print in Green)
+}
