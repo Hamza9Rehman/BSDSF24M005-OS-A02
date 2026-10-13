@@ -63,3 +63,32 @@ Inside do_ls(), after directory entries are gathered, the code checks display_mo
 If display_mode == MODE_LONG, it calls print_file_info() directly.   
 If display_mode == MODE_HORIZONTAL, it calls print_columnar_horizontal().   
 Otherwise (default), it falls back to calling print_columnar_vertical().
+
+
+Feature 5
+
+
+Why is it necessary to read all directory entries into memory before you can sort them? What 
+are the potential drawbacks of this approach for directories containing millions of files?
+
+Why It Is Necessary:
+The readdir() system call returns directory entries one by one in whatever order the underlying file system stores them (un-ordered). Algorithms like qsort() need access to the full dataset in memory to make comparative swaps between any two elements across the list. Because you cannot perform swaps or random-access lookups directly on the directory stream, all entries must be stored in memory first before sorting can take place.   
+Potential Drawbacks for Millions of Files:
+High Memory Consumption: Allocating memory for millions of file name strings and array pointers can consume gigabytes of RAM, potentially triggering Out-Of-Memory (OOM) errors.   
+Latency / Delay: The user experiences a noticeable delay because ls cannot print a single filename until every file in the directory has been read, allocated, and sorted.
+
+
+Explain the purpose and signature of the comparison function required by qsort(). How does 
+it work, and why must it take const void * arguments?
+
+Function Signature: int compare_strings(const void *a, const void *b);
+
+Purpose:
+qsort() is a generic C standard library function that can sort any data type (integers, structs, strings). Because qsort() does not know what type of data it is sorting, it relies on your custom comparison function to compare two elements.   
+How It Works:
+It takes two pointers, casts them to string pointers (const char **), and compares the underlying strings using strcmp():   
+Returns a negative integer if the first string comes before the second alphabetically.   
+Returns 0 if both strings are identical.   
+Returns a positive integer if the first string comes after the second alphabetically.   
+Why It Must Take const void *:
+void * is C's generic pointer type, allowing qsort() to accept array elements of any data type. The const keyword promises that the comparison function will not modify the data elements while comparing them. 

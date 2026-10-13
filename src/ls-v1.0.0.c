@@ -1,5 +1,5 @@
 /*
-- Programming Assignment 02: ls-v1.3.0 (Horizontal Column Display -x)
+- Programming Assignment 02: ls-v1.4.0 (Alphabetical Sort)
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,6 +23,7 @@ void do_ls(const char *dir);
 void print_file_info(const char *dir, const char *filename);
 void print_columnar_vertical(char **filenames, int count, int max_len);
 void print_columnar_horizontal(char **filenames, int count, int max_len);
+int compare_strings(const void *a, const void *b);
 int get_term_width(void);
 
 int main(int argc, char *argv[])
@@ -67,6 +68,14 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+// Comparison function for qsort to sort string array alphabetically
+int compare_strings(const void *a, const void *b)
+{
+    const char *strA = *(const char **)a;
+    const char *strB = *(const char **)b;
+    return strcmp(strA, strB);
+}
+
 // Gets terminal width using ioctl (fallback to 80 if unavailable)
 int get_term_width(void)
 {
@@ -87,7 +96,7 @@ void do_ls(const char *dir)
         return;
     }
 
-    // Dynamic array to store filenames
+    // Dynamic array to store all filenames
     int capacity = 16;
     int count = 0;
     int max_len = 0;
@@ -100,39 +109,42 @@ void do_ls(const char *dir)
         if (entry->d_name[0] == '.')
             continue;
 
-        if (display_mode == MODE_LONG)
+        // Expand dynamic array capacity if full
+        if (count >= capacity)
         {
-            print_file_info(dir, entry->d_name);
+            capacity *= 2;
+            filenames = realloc(filenames, capacity * sizeof(char *));
         }
-        else
+
+        // Store copy of filename
+        filenames[count] = strdup(entry->d_name);
+
+        // Track longest filename length
+        int len = strlen(entry->d_name);
+        if (len > max_len)
         {
-            // Expand dynamic array capacity if full
-            if (count >= capacity)
-            {
-                capacity *= 2;
-                filenames = realloc(filenames, capacity * sizeof(char *));
-            }
-
-            // Store copy of filename
-            filenames[count] = strdup(entry->d_name);
-
-            // Track longest filename length
-            int len = strlen(entry->d_name);
-            if (len > max_len)
-            {
-                max_len = len;
-            }
-
-            count++;
+            max_len = len;
         }
+
+        count++;
     }
 
     closedir(dp);
 
-    // Call corresponding display handler if not long-listing
-    if (display_mode != MODE_LONG && count > 0)
+    if (count > 0)
     {
-        if (display_mode == MODE_HORIZONTAL)
+        // 1. Sort filenames alphabetically using qsort
+        qsort(filenames, count, sizeof(char *), compare_strings);
+
+        // 2. Render pre-sorted list using selected display mode
+        if (display_mode == MODE_LONG)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                print_file_info(dir, filenames[i]);
+            }
+        }
+        else if (display_mode == MODE_HORIZONTAL)
         {
             print_columnar_horizontal(filenames, count, max_len);
         }
@@ -141,7 +153,7 @@ void do_ls(const char *dir)
             print_columnar_vertical(filenames, count, max_len);
         }
 
-        // Free allocated memory
+        // 3. Free allocated dynamic memory
         for (int i = 0; i < count; i++)
         {
             free(filenames[i]);
@@ -154,19 +166,17 @@ void do_ls(const char *dir)
 void print_columnar_horizontal(char **filenames, int count, int max_len)
 {
     int term_width = get_term_width();
-    int col_width = max_len + 2; // 2 spaces buffer between columns
+    int col_width = max_len + 2;
     int current_pos = 0;
 
     for (int i = 0; i < count; i++)
     {
-        // Check if printing the next item exceeds terminal width
         if (current_pos + col_width > term_width && current_pos > 0)
         {
             printf("\n");
             current_pos = 0;
         }
 
-        // Print left-aligned, padded filename
         printf("%-*s", col_width, filenames[i]);
         current_pos += col_width;
     }
