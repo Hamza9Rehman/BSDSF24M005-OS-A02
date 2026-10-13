@@ -1,5 +1,5 @@
 /*
-- Programming Assignment 02: ls-v1.5.0 (Colorized Output)
+- Programming Assignment 02: ls-v1.6.0 (Recursive Listing -R)
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,8 +26,9 @@
 #define MODE_HORIZONTAL 2  // -x option
 
 int display_mode = MODE_VERTICAL;
+int flag_R = 0;  // -R recursive flag
 
-void do_ls(const char *dir);
+void do_ls(const char *dir, int print_header);
 void print_file_info(const char *dir, const char *filename);
 void print_columnar_vertical(const char *dir, char **filenames, int count, int max_len);
 void print_columnar_horizontal(const char *dir, char **filenames, int count, int max_len);
@@ -40,8 +41,8 @@ int main(int argc, char *argv[])
 {
     int opt;
 
-    // 1. Parse -l and -x options using getopt
-    while ((opt = getopt(argc, argv, "lx")) != -1)
+    // 1. Parse -l, -x, and -R options using getopt
+    while ((opt = getopt(argc, argv, "lxR")) != -1)
     {
         switch (opt)
         {
@@ -51,25 +52,28 @@ int main(int argc, char *argv[])
             case 'x':
                 display_mode = MODE_HORIZONTAL;
                 break;
+            case 'R':
+                flag_R = 1;
+                break;
             default:
-                fprintf(stderr, "Usage: %s [-l] [-x] [directory...]\n", argv[0]);
+                fprintf(stderr, "Usage: %s [-l] [-x] [-R] [directory...]\n", argv[0]);
                 exit(EXIT_FAILURE);
         }
     }
 
     // 2. Process directories
-    if (optind == argc)
+    int num_dirs = argc - optind;
+    if (num_dirs == 0)
     {
-        do_ls(".");
+        do_ls(".", flag_R ? 1 : 0);
     }
     else
     {
         for (int i = optind; i < argc; i++)
         {
-            if (argc - optind > 1)
-                printf("%s:\n", argv[i]);
-
-            do_ls(argv[i]);
+            // Print header if multiple directories or if recursive mode is enabled
+            int print_hdr = (num_dirs > 1 || flag_R) ? 1 : 0;
+            do_ls(argv[i], print_hdr);
 
             if (i < argc - 1)
                 printf("\n");
@@ -78,7 +82,7 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-// Check if filename has archive extension (.tar, .gz, .zip)
+// Check if filename has archive extension (.tar, .gz, .zip, etc.)
 int is_archive(const char *filename)
 {
     const char *exts[] = {".tar", ".gz", ".zip", ".tgz", ".bz2", ".xz", NULL};
@@ -103,14 +107,12 @@ void print_colored_filename(const char *dir, const char *filename, int padding)
     struct stat info;
     if (lstat(path, &info) == -1)
     {
-        // Fallback to uncolored printing if lstat fails
         printf("%-*s", padding, filename);
         return;
     }
 
     const char *color = COLOR_RESET;
 
-    // Coloring Rules Logic
     if (S_ISLNK(info.st_mode))
     {
         color = COLOR_PINK; // Symbolic Link: Pink
@@ -132,10 +134,8 @@ void print_colored_filename(const char *dir, const char *filename, int padding)
         color = COLOR_GREEN; // Executable: Green
     }
 
-    // Print colored string
     printf("%s%s%s", color, filename, COLOR_RESET);
 
-    // Add trailing spaces manually because ANSI codes break printf %-*s width calculations
     int len = strlen(filename);
     for (int i = len; i < padding; i++)
     {
@@ -143,7 +143,7 @@ void print_colored_filename(const char *dir, const char *filename, int padding)
     }
 }
 
-// Comparison function for qsort to sort string array alphabetically
+// Comparison function for qsort
 int compare_strings(const void *a, const void *b)
 {
     const char *strA = *(const char **)a;
@@ -159,16 +159,21 @@ int get_term_width(void)
     {
         return w.ws_col;
     }
-    return 80; // Default fallback
+    return 80;
 }
 
-void do_ls(const char *dir)
+void do_ls(const char *dir, int print_header)
 {
     DIR *dp = opendir(dir);
     if (dp == NULL)
     {
         perror(dir);
         return;
+    }
+
+    if (print_header)
+    {
+        printf("%s:\n", dir);
     }
 
     // Dynamic array to store all filenames
@@ -205,10 +210,10 @@ void do_ls(const char *dir)
 
     if (count > 0)
     {
-        // 1. Sort filenames alphabetically using qsort
+        // 1. Sort filenames alphabetically
         qsort(filenames, count, sizeof(char *), compare_strings);
 
-        // 2. Render pre-sorted list using selected display mode
+        // 2. Render current directory contents using selected display mode
         if (display_mode == MODE_LONG)
         {
             for (int i = 0; i < count; i++)
@@ -225,7 +230,28 @@ void do_ls(const char *dir)
             print_columnar_vertical(dir, filenames, count, max_len);
         }
 
-        // 3. Free allocated memory
+        // 3. Handle recursion (-R flag)
+        if (flag_R)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                char full_path[1024];
+                snprintf(full_path, sizeof(full_path), "%s/%s", dir, filenames[i]);
+
+                struct stat st;
+                if (lstat(full_path, &st) == 0)
+                {
+                    // Check if entry is a directory (and not symlink)
+                    if (S_ISDIR(st.st_mode) && !S_ISLNK(st.st_mode))
+                    {
+                        printf("\n");
+                        do_ls(full_path, 1);
+                    }
+                }
+            }
+        }
+
+        // 4. Free allocated dynamic memory
         for (int i = 0; i < count; i++)
         {
             free(filenames[i]);
@@ -338,7 +364,6 @@ void print_file_info(const char *dir, const char *filename)
            (long)info.st_size,
            time_str + 4);
 
-    // Print filename with colors for long listing as well
     print_colored_filename(dir, filename, 0);
     printf("\n");
 }

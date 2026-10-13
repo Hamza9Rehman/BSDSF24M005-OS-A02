@@ -131,3 +131,30 @@ To check if any user class (owner, group, or others) has execute permission on t
 if (info.st_mode & (S_IXUSR | S_IXGRP | S_IXOTH)) {
     // File is executable by at least one entity (Print in Green)
 }
+
+
+Feature 7
+
+
+In a recursive function, what is a "base case"? In the context of your recursive ls, what is the 
+base case that stops the recursion from continuing forever?
+
+What is a "Base Case":
+In any recursive function, the base case is the terminating condition that stops the function from making further recursive self-calls and allows the call stack to unwind.
+
+Base Case in Recursive ls:
+The base case occurs when a directory contains no further subdirectories (or contains only regular files, symbolic links, and special files). When do_ls() finishes iterating over the sorted entry list and finds no child items satisfying S_ISDIR(), it exits without making further calls to do_ls().
+
+
+Explain why it is essential to construct a full path (e.g., "parent_dir/subdir") before making a 
+recursive call. What would happen if you simply called do_ls("subdir") from within the 
+do_ls("parent_dir") function call?
+
+Why Full Path Construction is Essential:
+System calls like opendir() and lstat() resolve paths relative to the process's Current Working Directory (CWD) unless an absolute or properly prefixed path is provided.
+
+What Happens if You Only Pass "subdir":
+If do_ls("parent_dir") executes and attempts to open a child folder by calling do_ls("subdir") without combining the parent path:
+opendir("subdir") fails with No such file or directory (unless subdir coincidentally exists in the directory from which ls was originally launched).
+
+The process does not automatically change its actual working directory (chdir) during recursion. Therefore, relative paths like "subdir" look inside the top-level directory where the program started, rather than looking inside "parent_dir/subdir".
