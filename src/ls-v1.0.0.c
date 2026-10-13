@@ -1,5 +1,5 @@
 /*
-- Programming Assignment 02: ls-v1.2.0 (Column Display: Down Then Across)
+- Programming Assignment 02: ls-v1.3.0 (Horizontal Column Display -x)
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,23 +12,37 @@
 #include <grp.h>
 #include <time.h>
 
-int flag_l = 0;
+// Display modes
+#define MODE_VERTICAL   0  // Default "down then across"
+#define MODE_LONG       1  // -l option
+#define MODE_HORIZONTAL 2  // -x option
+
+int display_mode = MODE_VERTICAL;
 
 void do_ls(const char *dir);
 void print_file_info(const char *dir, const char *filename);
-void print_columnar(char **filenames, int count, int max_len);
+void print_columnar_vertical(char **filenames, int count, int max_len);
+void print_columnar_horizontal(char **filenames, int count, int max_len);
 int get_term_width(void);
 
 int main(int argc, char *argv[])
 {
     int opt;
 
-    // 1. Parse -l flag
-    while ((opt = getopt(argc, argv, "l")) != -1)
+    // 1. Parse -l and -x options using getopt
+    while ((opt = getopt(argc, argv, "lx")) != -1)
     {
-        if (opt == 'l')
+        switch (opt)
         {
-            flag_l = 1;
+            case 'l':
+                display_mode = MODE_LONG;
+                break;
+            case 'x':
+                display_mode = MODE_HORIZONTAL;
+                break;
+            default:
+                fprintf(stderr, "Usage: %s [-l] [-x] [directory...]\n", argv[0]);
+                exit(EXIT_FAILURE);
         }
     }
 
@@ -86,7 +100,7 @@ void do_ls(const char *dir)
         if (entry->d_name[0] == '.')
             continue;
 
-        if (flag_l)
+        if (display_mode == MODE_LONG)
         {
             print_file_info(dir, entry->d_name);
         }
@@ -115,10 +129,17 @@ void do_ls(const char *dir)
 
     closedir(dp);
 
-    // If default mode (not -l) and files exist, print in columns
-    if (!flag_l && count > 0)
+    // Call corresponding display handler if not long-listing
+    if (display_mode != MODE_LONG && count > 0)
     {
-        print_columnar(filenames, count, max_len);
+        if (display_mode == MODE_HORIZONTAL)
+        {
+            print_columnar_horizontal(filenames, count, max_len);
+        }
+        else
+        {
+            print_columnar_vertical(filenames, count, max_len);
+        }
 
         // Free allocated memory
         for (int i = 0; i < count; i++)
@@ -129,19 +150,40 @@ void do_ls(const char *dir)
     }
 }
 
-// "Down then across" column printing logic
-void print_columnar(char **filenames, int count, int max_len)
+// Horizontal ("across") column printing logic (-x)
+void print_columnar_horizontal(char **filenames, int count, int max_len)
 {
     int term_width = get_term_width();
     int col_width = max_len + 2; // 2 spaces buffer between columns
+    int current_pos = 0;
 
-    // Calculate number of columns and rows
+    for (int i = 0; i < count; i++)
+    {
+        // Check if printing the next item exceeds terminal width
+        if (current_pos + col_width > term_width && current_pos > 0)
+        {
+            printf("\n");
+            current_pos = 0;
+        }
+
+        // Print left-aligned, padded filename
+        printf("%-*s", col_width, filenames[i]);
+        current_pos += col_width;
+    }
+    printf("\n");
+}
+
+// Vertical ("down then across") column printing logic (Default)
+void print_columnar_vertical(char **filenames, int count, int max_len)
+{
+    int term_width = get_term_width();
+    int col_width = max_len + 2;
+
     int cols = term_width / col_width;
     if (cols < 1) cols = 1;
 
-    int rows = (count + cols - 1) / cols; // Integer division ceiling formula
+    int rows = (count + cols - 1) / cols;
 
-    // Print row by row
     for (int r = 0; r < rows; r++)
     {
         for (int c = 0; c < cols; c++)
@@ -150,10 +192,9 @@ void print_columnar(char **filenames, int count, int max_len)
 
             if (idx < count)
             {
-                // Print filename left-aligned, padded to col_width
                 if (c == cols - 1 || idx + rows >= count)
                 {
-                    printf("%s", filenames[idx]); // Last column in line doesn't need trailing space
+                    printf("%s", filenames[idx]);
                 }
                 else
                 {
